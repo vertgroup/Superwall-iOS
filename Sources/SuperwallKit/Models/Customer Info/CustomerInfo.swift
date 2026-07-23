@@ -208,7 +208,7 @@ public final class CustomerInfo: NSObject, Codable {
     let externalEntitlements: [Entitlement]
     switch subscriptionStatus {
     case .active(let activeEntitlements):
-      externalEntitlements = Array(activeEntitlements)
+      externalEntitlements = activeEntitlements.filter { $0.store != .superwall }
     case .inactive, .unknown:
       externalEntitlements = []
     }
