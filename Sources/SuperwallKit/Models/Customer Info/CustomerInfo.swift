@@ -213,10 +213,40 @@ public final class CustomerInfo: NSObject, Codable {
       externalEntitlements = []
     }
 
-    // Merge: active from external controller + all web + inactive device
-    // This gives us complete history while respecting external controller as source of truth for active status
-    let allEntitlements = externalEntitlements + webCustomerInfo.entitlements + inactiveDeviceEntitlements
-    let finalEntitlements = Entitlement.mergePrioritized(allEntitlements)
+    // Preserve historical product mappings, but never let cached web or device
+    // metadata replace an entitlement supplied by the external controller.
+    // Generic priority merging favors cached transaction history over a
+    // controller entitlement without a latestProductId, which can otherwise
+    // erase externally supplied store and renewal state.
+    let cachedEntitlements = webCustomerInfo.entitlements + inactiveDeviceEntitlements
+    let externalEntitlementIds = Set(externalEntitlements.map(\.id))
+    let externalSourceOfTruth = externalEntitlements.map { externalEntitlement in
+      let historicalProductIds = cachedEntitlements
+        .filter { $0.id == externalEntitlement.id }
+        .reduce(into: externalEntitlement.productIds) { productIds, entitlement in
+          productIds.formUnion(entitlement.productIds)
+        }
+      return Entitlement(
+        id: externalEntitlement.id,
+        type: externalEntitlement.type,
+        isActive: externalEntitlement.isActive,
+        productIds: historicalProductIds,
+        latestProductId: externalEntitlement.latestProductId,
+        store: externalEntitlement.store,
+        startsAt: externalEntitlement.startsAt,
+        renewedAt: externalEntitlement.renewedAt,
+        expiresAt: externalEntitlement.expiresAt,
+        isLifetime: externalEntitlement.isLifetime,
+        willRenew: externalEntitlement.willRenew,
+        state: externalEntitlement.state,
+        offerType: externalEntitlement.offerType
+      )
+    }
+    let unrelatedCachedEntitlements = cachedEntitlements.filter {
+      !externalEntitlementIds.contains($0.id)
+    }
+    let finalEntitlements = Set(externalSourceOfTruth)
+      .union(Entitlement.mergePrioritized(unrelatedCachedEntitlements))
 
     return CustomerInfo(
       subscriptions: baseCustomerInfo.subscriptions,
