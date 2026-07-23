@@ -11,6 +11,37 @@ import Foundation
 
 @Suite("CustomerInfo Milliseconds Decoding Tests")
 struct CustomerInfoDecodingTests {
+  @Test("External purchase controller preserves enriched Stripe entitlement")
+  func testExternalPurchaseControllerPreservesStripeRenewalState() {
+    let storage = Storage(
+      factory: StorageMock.DeviceInfoFactoryMock(),
+      cache: CacheMock()
+    )
+    let expiresAt = Date(timeIntervalSince1970: 1_735_689_600)
+    let entitlement = Entitlement(
+      id: "pro",
+      isActive: true,
+      store: .stripe,
+      expiresAt: expiresAt,
+      willRenew: false,
+      state: .subscribed,
+      offerType: nil
+    )
+
+    let customerInfo = CustomerInfo.forExternalPurchaseController(
+      storage: storage,
+      subscriptionStatus: .active([entitlement])
+    )
+
+    let preserved = customerInfo.entitlements.first
+    #expect(customerInfo.entitlements.count == 1)
+    #expect(preserved?.id == "pro")
+    #expect(preserved?.store == .stripe)
+    #expect(preserved?.expiresAt == expiresAt)
+    #expect(preserved?.willRenew == false)
+    #expect(preserved?.state == .subscribed)
+  }
+
   @Test("Decode SubscriptionTransaction with milliseconds using subscriptionsApi decoder")
   func testSubscriptionTransactionMillisecondsDecoding() throws {
     let json = """

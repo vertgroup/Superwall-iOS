@@ -201,12 +201,14 @@ public final class CustomerInfo: NSObject, Codable {
     // Active entitlements come from the external purchase controller (source of truth)
     let inactiveDeviceEntitlements = deviceCustomerInfo.entitlements.filter { !$0.isActive }
 
-    // Get active appStore entitlements from external controller (the source of truth for active status)
-    // Filter for appStore ones only to avoid duplicating web-granted entitlements
+    // Get active entitlements from the external controller, which is the
+    // source of truth for both access and provider metadata. Keep non-App
+    // Store entitlements so controllers backed by Stripe or another external
+    // provider can supply complete renewal state.
     let externalEntitlements: [Entitlement]
     switch subscriptionStatus {
     case .active(let activeEntitlements):
-      externalEntitlements = activeEntitlements.filter { $0.store == .appStore }
+      externalEntitlements = Array(activeEntitlements)
     case .inactive, .unknown:
       externalEntitlements = []
     }

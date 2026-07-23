@@ -172,7 +172,11 @@ public final class Entitlement: NSObject, Codable, Sendable {
     case offerType
   }
 
-  init(
+  /// Creates an entitlement with externally supplied subscription metadata.
+  ///
+  /// Use this initializer when an external purchase controller is the source
+  /// of truth for both access and renewal state.
+  public init(
     id: String,
     type: EntitlementType = .serviceLevel,
     isActive: Bool = true,
