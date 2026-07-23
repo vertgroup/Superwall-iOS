@@ -27,11 +27,12 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ env.MAINTENANCE_BRANCH }}
+          token: ${{ secrets.RELEASE_BOT_TOKEN || github.token }}
 
       - id: sync
         name: Create upstream release PR
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || github.token }}
         shell: bash
         run: |
           set -euo pipefail
