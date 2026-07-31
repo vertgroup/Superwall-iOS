@@ -58,7 +58,10 @@ final class TransactionManager {
   ///   - paywallViewController: The `PaywallViewController` that the product is being
   ///   purchased from.
   @discardableResult
-  func purchase(_ purchaseSource: PurchaseSource) async -> PurchaseResult {
+  func purchase(
+    _ purchaseSource: PurchaseSource,
+    tracksDirectPurchase: Bool = false
+  ) async -> PurchaseResult {
     let product: StoreProduct
 
     switch purchaseSource {
@@ -87,7 +90,8 @@ final class TransactionManager {
     }
     await prepareToPurchase(
       product: product,
-      purchaseSource: purchaseSource
+      purchaseSource: purchaseSource,
+      tracksDirectPurchase: tracksDirectPurchase
     )
 
     let result = await purchase(product, purchaseSource: purchaseSource)
@@ -96,7 +100,8 @@ final class TransactionManager {
     // This avoids duplicate calls by the purchase function of the purchase
     // controller.
     if case .purchaseFunc = purchaseSource,
-      factory.makeHasExternalPurchaseController() {
+      factory.makeHasExternalPurchaseController(),
+      !tracksDirectPurchase {
       // Not resetting coordinator here because we need it with the purchase controller
       // call.
       return result
@@ -632,7 +637,8 @@ final class TransactionManager {
   /// Tracks the analytics and logs the start of the transaction.
   func prepareToPurchase(
     product: StoreProduct,
-    purchaseSource: PurchaseSource
+    purchaseSource: PurchaseSource,
+    tracksDirectPurchase: Bool = false
   ) async {
     // Always regenerate the custom transaction ID before a new purchase attempt.
     if product.isCustomProduct {
@@ -682,7 +688,8 @@ final class TransactionManager {
       // get called by the purchase function of the purchase controller.
       let options = factory.makeSuperwallOptions()
       if !options.shouldObservePurchases,
-        factory.makeHasExternalPurchaseController() {
+        factory.makeHasExternalPurchaseController(),
+        !tracksDirectPurchase {
         return
       }
 

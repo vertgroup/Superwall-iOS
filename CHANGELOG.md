@@ -7,6 +7,7 @@ The changelog for `SuperwallKit`. Also see the [releases](https://github.com/sup
 ### Enhancements
 
 - Clarifies that `IntegrationAttribute.onesignalId` should be set to the OneSignal User ID used by the OneSignal integration.
+- Adds `purchaseAndTrack(_:)` for native, top-level StoreKit purchases that should emit transaction events when an external `PurchaseController` is configured.
 
 ### Fixes
 

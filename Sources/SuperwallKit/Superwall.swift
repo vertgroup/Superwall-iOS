@@ -1153,6 +1153,42 @@ public final class Superwall: NSObject, ObservableObject {
     return await dependencyContainer.transactionManager.purchase(.purchaseFunc(product))
   }
 
+  /// Initiates and tracks a top-level purchase of a ``StoreProduct`` from native UI.
+  ///
+  /// Use this instead of ``purchase(_:)`` when both of the following are true:
+  ///
+  /// - You configured Superwall with a ``PurchaseController``.
+  /// - The purchase starts outside a Superwall paywall, rather than from inside
+  ///   your purchase controller's `purchase(product:)` implementation.
+  ///
+  /// In that configuration, ``purchase(_:)`` suppresses transaction tracking to
+  /// prevent a nested purchase-controller call from producing duplicate events.
+  /// This method marks the call as the top-level purchase so Superwall records the
+  /// external `transaction_start`, `transaction_complete`, and trial or subscription
+  /// start events while still purchasing the product through StoreKit.
+  ///
+  /// - Parameter product: The ``StoreProduct`` you wish to purchase.
+  /// - Returns: A ``PurchaseResult``.
+  /// - Important: Do not call this from inside ``PurchaseController/purchase(product:)``;
+  ///   the enclosing Superwall paywall flow already tracks that transaction.
+  /// - Warning: You cannot use this function while also setting
+  ///   ``SuperwallOptions/shouldObservePurchases`` to `true`.
+  public func purchaseAndTrack(_ product: StoreProduct) async -> PurchaseResult {
+    if options.shouldObservePurchases {
+      Logger.debug(
+        logLevel: .error,
+        scope: .superwallCore,
+        message: "You cannot make purchases using Superwall.shared.purchaseAndTrack(_:) while the "
+          + "SuperwallOption shouldObservePurchases is set to true."
+      )
+      return .cancelled
+    }
+    return await dependencyContainer.transactionManager.purchase(
+      .purchaseFunc(product),
+      tracksDirectPurchase: true
+    )
+  }
+
   /// Initiates a purchase of a `SKProduct`.
   ///
   /// Use this function to purchase any `SKProduct`, regardless of whether you
