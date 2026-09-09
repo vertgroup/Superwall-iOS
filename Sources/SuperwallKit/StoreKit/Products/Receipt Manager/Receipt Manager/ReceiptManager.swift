@@ -195,28 +195,25 @@ actor ReceiptManager {
       baseCustomerInfo = onDeviceSnapshot.customerInfo
     }
 
-    // If using an external purchase controller, preserve entitlements that came from it
-    // (The external controller's active entitlements won't necessarily be in device data)
+    // If using an external purchase controller, it is the source of truth for
+    // active entitlements. Rebuild through the same merge that runs when
+    // `subscriptionStatus` is set, so the refreshed device snapshot can never
+    // replace an external entitlement that shares its id.
+    //
+    // The previous merge kept an external entitlement only when no device or
+    // web entitlement had the same id. A subscriber whose backend-granted
+    // "pro" coexisted with an expired on-device "pro" (a lapsed App Store
+    // plan under the same entitlement) therefore lost the active entitlement
+    // on every launch: `customerInfo` flipped to inactive/expired right after
+    // this refresh while `subscriptionStatus` stayed active, and audiences
+    // keyed on `device.customerInfo` presented win-back paywalls to paying
+    // users.
     let mergedCustomerInfo: CustomerInfo
     if factory.makeHasExternalPurchaseController() {
-      let currentCustomerInfo = await MainActor.run { Superwall.shared.customerInfo }
-
-      // Get entitlements that are only in current CustomerInfo (i.e., from external controller)
-      // by filtering out anything that matches device or web entitlements by ID
-      let deviceAndWebEntitlementIds = Set(baseCustomerInfo.entitlements.map { $0.id })
-      let externalOnlyEntitlements = currentCustomerInfo.entitlements.filter { entitlement in
-        // Keep external entitlement if it's not already in device/web
-        !deviceAndWebEntitlementIds.contains(entitlement.id)
-      }
-
-      // Merge external controller entitlements with device + web
-      let allEntitlements = baseCustomerInfo.entitlements + externalOnlyEntitlements
-      let finalEntitlements = Entitlement.mergePrioritized(allEntitlements)
-
-      mergedCustomerInfo = CustomerInfo(
-        subscriptions: baseCustomerInfo.subscriptions,
-        nonSubscriptions: baseCustomerInfo.nonSubscriptions,
-        entitlements: finalEntitlements.sorted { $0.id < $1.id }
+      let subscriptionStatus = await MainActor.run { Superwall.shared.subscriptionStatus }
+      mergedCustomerInfo = CustomerInfo.forExternalPurchaseController(
+        storage: storage,
+        subscriptionStatus: subscriptionStatus
       )
     } else {
       mergedCustomerInfo = baseCustomerInfo
