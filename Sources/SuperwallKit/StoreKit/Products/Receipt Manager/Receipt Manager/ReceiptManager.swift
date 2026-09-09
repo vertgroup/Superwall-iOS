@@ -157,7 +157,7 @@ actor ReceiptManager {
   }
 
   /// Loads purchased products from the receipt, storing the purchased subscription group identifiers, purchases and active purchases.
-  func loadPurchasedProducts(config: Config?) async {
+  func loadPurchasedProducts(config: Config?, superwall: Superwall? = nil) async {
     let resolvedConfig: Config?
 
     if let config = config {
@@ -184,46 +184,31 @@ actor ReceiptManager {
     // Get device snapshot
     let onDeviceSnapshot = await manager.loadPurchases(serverEntitlementsByProductId: configEntitlementsByProductId)
 
-    // Save device-only CustomerInfo to storage for use when merging with web entitlements
-    storage.save(onDeviceSnapshot.customerInfo, forType: LatestDeviceCustomerInfo.self)
-
-    // Merge with web customer info if available
-    let baseCustomerInfo: CustomerInfo
-    if let latestRedeemResponse = storage.get(LatestRedeemResponse.self) {
-      baseCustomerInfo = onDeviceSnapshot.customerInfo.merging(with: latestRedeemResponse.customerInfo)
-    } else {
-      baseCustomerInfo = onDeviceSnapshot.customerInfo
-    }
-
-    // If using an external purchase controller, it is the source of truth for
-    // active entitlements. Rebuild through the same merge that runs when
-    // `subscriptionStatus` is set, so the refreshed device snapshot can never
-    // replace an external entitlement that shares its id.
-    //
-    // The previous merge kept an external entitlement only when no device or
-    // web entitlement had the same id. A subscriber whose backend-granted
-    // "pro" coexisted with an expired on-device "pro" (a lapsed App Store
-    // plan under the same entitlement) therefore lost the active entitlement
-    // on every launch: `customerInfo` flipped to inactive/expired right after
-    // this refresh while `subscriptionStatus` stayed active, and audiences
-    // keyed on `device.customerInfo` presented win-back paywalls to paying
-    // users.
-    let mergedCustomerInfo: CustomerInfo
-    if factory.makeHasExternalPurchaseController() {
-      let subscriptionStatus = await MainActor.run { Superwall.shared.subscriptionStatus }
-      mergedCustomerInfo = CustomerInfo.forExternalPurchaseController(
-        storage: storage,
-        subscriptionStatus: subscriptionStatus
-      )
-    } else {
-      mergedCustomerInfo = baseCustomerInfo
-    }
-
+    let hasExternalPurchaseController = factory.makeHasExternalPurchaseController()
+    // Read the controller status and publish the merge without suspending between
+    // them. Otherwise a concurrent status update can be replaced by this refresh's
+    // stale snapshot, leaving customerInfo inconsistent with subscriptionStatus.
     await MainActor.run {
-      Superwall.shared.customerInfo = mergedCustomerInfo
-    }
+      let superwall = superwall ?? Superwall.shared
+      storage.save(onDeviceSnapshot.customerInfo, forType: LatestDeviceCustomerInfo.self)
 
-    Superwall.shared.entitlements.setEntitlementsFromConfig(mergedCustomerInfo.entitlementsByProductId)
+      let mergedCustomerInfo: CustomerInfo
+      if hasExternalPurchaseController {
+        // The controller owns access and renewal metadata even when StoreKit has
+        // an expired entitlement with the same ID. Keep the device product history.
+        mergedCustomerInfo = CustomerInfo.forExternalPurchaseController(
+          storage: storage,
+          subscriptionStatus: superwall.subscriptionStatus
+        )
+      } else if let latestRedeemResponse = storage.get(LatestRedeemResponse.self) {
+        mergedCustomerInfo = onDeviceSnapshot.customerInfo.merging(with: latestRedeemResponse.customerInfo)
+      } else {
+        mergedCustomerInfo = onDeviceSnapshot.customerInfo
+      }
+
+      superwall.customerInfo = mergedCustomerInfo
+      superwall.entitlements.setEntitlementsFromConfig(mergedCustomerInfo.entitlementsByProductId)
+    }
 
     await receiptDelegate?.syncSubscriptionStatus(purchases: onDeviceSnapshot.purchases)
 

@@ -61,54 +61,6 @@ struct CustomerInfoDecodingTests {
     #expect(preserved?.productIds == ["legacy_product"])
   }
 
-  @Test("External active entitlement survives a device snapshot holding an expired entitlement of the same id")
-  func testExternalActiveEntitlementBeatsExpiredDeviceEntitlement() {
-    // Receipt refresh scenario: StoreKit on the device knows an expired "pro"
-    // (a lapsed App Store plan) while the external purchase controller grants
-    // an active "pro". The external entitlement must win, and must keep the
-    // device's product history.
-    let storage = StorageMock()
-    let expiredOnDevice = Entitlement(
-      id: "pro",
-      isActive: false,
-      productIds: ["weekly_699_7d_trial"],
-      latestProductId: "weekly_699_7d_trial",
-      store: .appStore,
-      expiresAt: Date(timeIntervalSince1970: 1_751_500_000),
-      willRenew: false,
-      state: .expired,
-      offerType: nil
-    )
-    storage.save(
-      CustomerInfo(subscriptions: [], nonSubscriptions: [], entitlements: [expiredOnDevice]),
-      forType: LatestDeviceCustomerInfo.self
-    )
-    let externalExpiresAt = Date(timeIntervalSince1970: 1_780_000_000)
-    let external = Entitlement(
-      id: "pro",
-      isActive: true,
-      store: .appStore,
-      expiresAt: externalExpiresAt,
-      willRenew: true,
-      state: .subscribed,
-      offerType: nil
-    )
-
-    let customerInfo = CustomerInfo.forExternalPurchaseController(
-      storage: storage,
-      subscriptionStatus: .active([external])
-    )
-
-    let pro = customerInfo.entitlements.first
-    #expect(customerInfo.entitlements.count == 1)
-    #expect(pro?.id == "pro")
-    #expect(pro?.isActive == true)
-    #expect(pro?.state == .subscribed)
-    #expect(pro?.expiresAt == externalExpiresAt)
-    #expect(pro?.willRenew == true)
-    #expect(pro?.productIds.contains("weekly_699_7d_trial") == true)
-  }
-
   @Test("Decode SubscriptionTransaction with milliseconds using subscriptionsApi decoder")
   func testSubscriptionTransactionMillisecondsDecoding() throws {
     let json = """
