@@ -219,9 +219,12 @@ public final class CustomerInfo: NSObject, Codable {
     // controller entitlement without a latestProductId, which can otherwise
     // erase externally supplied store and renewal state.
     let cachedEntitlements = webCustomerInfo.entitlements + inactiveDeviceEntitlements
+    // Product mappings are independent of access. Include active device products
+    // even though their status and renewal metadata must not override the controller.
+    let productMappingEntitlements = webCustomerInfo.entitlements + deviceCustomerInfo.entitlements
     let externalEntitlementIds = Set(externalEntitlements.map(\.id))
     let externalSourceOfTruth = externalEntitlements.map { externalEntitlement in
-      let historicalProductIds = cachedEntitlements
+      let historicalProductIds = productMappingEntitlements
         .filter { $0.id == externalEntitlement.id }
         .reduce(into: externalEntitlement.productIds) { productIds, entitlement in
           productIds.formUnion(entitlement.productIds)
